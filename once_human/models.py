@@ -1,6 +1,8 @@
 from sqlalchemy import (
     String,
     UniqueConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
 )
 from sqlalchemy.orm import relationship, Mapped, DeclarativeBase, attribute_keyed_dict
 from sqlalchemy.testing.schema import mapped_column
@@ -13,21 +15,19 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "user"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    discord_id: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    id: Mapped[str] = mapped_column(String(20), primary_key=True)
     username: Mapped[str]
     display_name: Mapped[str]
     players: Mapped[list["Player"]] = relationship(back_populates="user")
 
 
 class Player(Base):
-    __tablenname__ = "player"
+    __tablename__ = "player"
     __table_args__ = (UniqueConstraint("user_id", "is_default"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(foreign_key="user.id")
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id"), primary_key=True)
     user: Mapped["User"] = relationship(back_populates="players")
-    name: Mapped[str]
+    name: Mapped[str] = mapped_column(primary_key=True)
     is_default: Mapped[bool]
     specializations: Mapped[dict[int, "PlayerSpecialization"]] = relationship(
         collection_class=attribute_keyed_dict("level")
@@ -37,7 +37,7 @@ class Player(Base):
 class Specialization(Base):
     __tablename__ = "specialization"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str]
     levels: Mapped[str]
     type: Mapped[str]
@@ -51,11 +51,12 @@ class Specialization(Base):
 class PlayerSpecialization(Base):
     __tablename__ = "player_specialization"
     __table_args__ = (
-        UniqueConstraint("player_id", "level"),
-        UniqueConstraint("player_id", "specialization_id"),
+        UniqueConstraint("user_id", "name", "level", "specialization_id"),
+        ForeignKeyConstraint(["user_id", "name"], ["player.user_id", "player.name"]),
     )
 
-    player_id: Mapped[int] = mapped_column(foreign_key="player.id")
-    level: Mapped[int]
-    specialization_id: Mapped[int] = mapped_column(foreign_key="specialization.id")
+    user_id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(primary_key=True)
+    level: Mapped[int] = mapped_column(primary_key=True)
+    specialization_id: Mapped[str] = mapped_column(ForeignKey("specialization.id"))
     specialization: Mapped["Specialization"] = relationship()
