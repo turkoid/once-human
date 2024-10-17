@@ -46,16 +46,17 @@ class Specialization(Base):
     identity: Mapped[str]
     description: Mapped[str]
     icon_url: Mapped[str]
+    is_active: Mapped[bool]
 
 
 class PlayerSpecialization(Base):
     __tablename__ = "player_specialization"
     __table_args__ = (
-        UniqueConstraint("user_id", "name", "level", "specialization_id"),
+        UniqueConstraint("user_id", "name", "specialization_id"),
         ForeignKeyConstraint(["user_id", "name"], ["player.user_id", "player.name"]),
     )
 
-    user_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user.id"), primary_key=True)
     name: Mapped[str] = mapped_column(primary_key=True)
     level: Mapped[int] = mapped_column(primary_key=True)
     specialization_id: Mapped[str] = mapped_column(ForeignKey("specialization.id"))
