@@ -12,6 +12,15 @@ class DatabaseSettings:
 
 
 @dataclass
+class GenericDatabaseSettings(DatabaseSettings):
+    user: str
+    password: str
+    host: str
+    name: str
+    driver: str = "default"
+
+
+@dataclass
 class GoogleSheet:
     id: int
     headers: int = 1
@@ -75,7 +84,7 @@ def load_config() -> Settings:
         cls = GoogleSheetsDatabaseSettings
         data["db"][db_dialect]["sheets_config"] = data["db"][db_dialect].pop("sheets")
     else:
-        cls = None
+        cls = GenericDatabaseSettings
     db_settings = cls(db_dialect, **data["db"][db_dialect])
 
     settings = Settings(db_settings)
