@@ -41,7 +41,6 @@ class GoogleSheet:
 @dataclass
 class GoogleSheetsDatabaseSettings(DatabaseSettings):
     document_id: str
-
     service_account_path: InitVar[str]
     sheets_config: InitVar[dict[str, int | dict[str, int | str]]]
     service_account: dict[str, str] = field(init=False)
@@ -67,8 +66,18 @@ class GoogleSheetsDatabaseSettings(DatabaseSettings):
 
 
 @dataclass
+class DiscordSettings:
+    token: str
+    guild: str
+    announcement_channel: int = None
+    user_role: int = None
+    admin_role: int = None
+
+
+@dataclass
 class Settings:
     db: DatabaseSettings
+    discord: DiscordSettings
 
 
 @lru_cache
@@ -86,8 +95,8 @@ def load_config() -> Settings:
     else:
         cls = GenericDatabaseSettings
     db_settings = cls(db_dialect, **data["db"][db_dialect])
-
-    settings = Settings(db_settings)
+    discord_settings = DiscordSettings(**data["discord"])
+    settings = Settings(db_settings, discord_settings)
 
     return settings
 
