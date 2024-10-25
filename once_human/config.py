@@ -1,5 +1,7 @@
+import abc
 import json
 import os
+from abc import abstractmethod
 from dataclasses import InitVar, field, dataclass
 from functools import lru_cache
 
@@ -7,8 +9,13 @@ import tomllib
 
 
 @dataclass
-class DatabaseSettings:
+class DatabaseSettings(abc.ABC):
     dialect: str
+
+    @property
+    @abstractmethod
+    def url(self) -> str:
+        raise NotImplementedError
 
 
 @dataclass
@@ -18,6 +25,14 @@ class GenericDatabaseSettings(DatabaseSettings):
     host: str
     name: str
     driver: str = "default"
+
+    @property
+    def url(self):
+        dialect = self.dialect
+        if self.driver != "default":
+            dialect = f"{self.dialect}+{self.driver}"
+        url = f"{dialect}://{self.user}:{self.password}@{self.host}/{self.name}"
+        return url
 
 
 @dataclass
