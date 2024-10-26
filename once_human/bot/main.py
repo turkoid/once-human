@@ -4,11 +4,6 @@ from discord.ext import commands
 
 from once_human.config import config
 
-intents = discord.Intents.default()
-intents.message_content = True
-
-GUILD_ID = discord.Object(id=config.discord.guild)
-
 
 class OnceHumanBotTree(app_commands.CommandTree):
     async def on_error(
@@ -21,7 +16,10 @@ class OnceHumanBotTree(app_commands.CommandTree):
 
 class OnceHumanBot(commands.Bot):
     def __init__(self, ask: bool = False) -> None:
-        super().__init__(command_prefix="!", intents=intents)
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix="", intents=intents)
+        self.guild_id = discord.Object(id=config.discord.guild)
         self.ask = ask
 
     async def on_ready(self) -> None:
@@ -32,9 +30,9 @@ class OnceHumanBot(commands.Bot):
         for ext in ["base", "specialization"]:
             await self.load_extension(f"cogs.{ext}")
 
-        self.tree.copy_global_to(guild=GUILD_ID)
+        self.tree.copy_global_to(guild=self.guild_id)
         if self.ask and input("sync?") == "y":
-            await self.tree.sync(guild=GUILD_ID)
+            await self.tree.sync(guild=self.guild_id)
             print("synced")
 
 
