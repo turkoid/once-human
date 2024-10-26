@@ -7,9 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "asyncpg>=0.30.0",
     "discord-py>=2.4.0",
+    "fastapi>=0.115.3",
     "pip>=24.2",
     "shillelagh[gsheetsapi]>=1.2.28",
-    "sqlalchemy>=2.0",
+    "sqlalchemy[asyncio]>=2.0",
 ]
 
 [tool.uv]
