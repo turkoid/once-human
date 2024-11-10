@@ -12,6 +12,8 @@ from sqlalchemy import (
     Index,
     String,
     ColumnElement,
+    ARRAY,
+    Integer,
 )
 from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -82,7 +84,7 @@ class Specialization(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str_100] = mapped_column()
-    levels: Mapped[str]
+    levels: Mapped[list[int]] = mapped_column(ARRAY(Integer))
     type: Mapped[str_100]
     affected: Mapped[str_100]
     category: Mapped[str_100]
