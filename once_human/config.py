@@ -42,9 +42,7 @@ class GoogleSheet:
     sync_mode: str = "BATCH"
 
     def url(self, document_id):
-        sync_mode_str = (
-            f"sync_mode={self.sync_mode}" if self.sync_mode != "BIDIRECTIONAL" else ""
-        )
+        sync_mode_str = f"sync_mode={self.sync_mode}" if self.sync_mode != "BIDIRECTIONAL" else ""
         headers_str = f"headers={self.headers}"
         id_str = f"gid={self.id}#gid={self.id}"
         query_str = "&".join([sync_mode_str, headers_str, id_str])
@@ -62,9 +60,7 @@ class GoogleSheetsDatabaseSettings(DatabaseSettings):
     sheets: dict[str, GoogleSheet] = field(init=False)
 
     def catalog(self):
-        catalog = {
-            name: self.sheets[name].url(self.document_id) for name in self.sheets.keys()
-        }
+        catalog = {name: self.sheets[name].url(self.document_id) for name in self.sheets.keys()}
         return catalog
 
     def __post_init__(self, service_account_path, sheets_config):
