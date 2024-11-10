@@ -21,6 +21,10 @@ from once_human.models import Player, Server, User, Specialization
 type Layout = list[list[discord.ui.Item]]
 type DecoratedCallback[**P] = Callable[[P], Awaitable[None]]
 
+MIN_LEVEL = 5
+MAX_LEVEL = 50
+LEVEL_INCREMENT = 5
+
 
 def intercept_interaction(orig_func: DecoratedCallback) -> InteractionCallback:
     is_inner_func = len(inspect.signature(orig_func).parameters) == 0
@@ -91,8 +95,14 @@ class BaseView(discord.ui.View, abc.ABC):
 
     async def _send_timed_embeds(self, embeds: list[discord.Embed], duration: float) -> None:
         await asyncio.sleep(duration)
-        self.timed_embeds = [embed for embed in self.timed_embeds if embed not in embeds]
-        await self.refresh()
+        updated_embeds = []
+        for embed in self.timed_embeds:
+            if any(em for em in embeds if em is embed):
+                continue
+            updated_embeds.append(embed)
+        if len(self.timed_embeds) != len(updated_embeds):
+            self.timed_embeds = updated_embeds
+            await self.refresh()
 
     async def interact(
         self,
@@ -105,7 +115,12 @@ class BaseView(discord.ui.View, abc.ABC):
         if self.is_finished():
             return
         timed_embeds: dict[float, list[discord.Embed]] = {}
-        if embeds:
+        if view and view is not self:
+            self.static_embeds = []
+            self.timed_embeds = []
+        elif embeds is not None and len(embeds) == 0:
+            self.static_embeds = []
+        elif embeds:
             static_embeds = []
             for embed in embeds:
                 if isinstance(embed, discord.Embed):
@@ -116,8 +131,6 @@ class BaseView(discord.ui.View, abc.ABC):
                     self.timed_embeds.append(embed.embed)
             if static_embeds:
                 self.static_embeds = static_embeds
-            elif timed_embeds:
-                self.static_embeds = []
         await response(self.interaction).edit_message(content=content, embeds=self.embeds, view=view or self)
         tasks: list[Awaitable[None]] = [
             self._send_timed_embeds(embeds, duration) for duration, embeds in timed_embeds.items()
@@ -129,7 +142,7 @@ class BaseView(discord.ui.View, abc.ABC):
             return
         await self.interaction.edit_original_response(content=content, embeds=self.embeds, view=self)
 
-    async def send_error(self, description: str, duration: float = 3) -> None:
+    async def send_error(self, description: str, duration: float = 5) -> None:
         await self.interact(embeds=[TimedEmbed(Error(description), duration)])
 
     async def finish(
@@ -302,7 +315,7 @@ class UserView(BaseView):
 
     @intercept_interaction
     async def reset_player(self) -> None:
-        await self.refresh(content="reset player")
+        await self.interact(content="reset player")
 
     @intercept_interaction
     async def modify_player(self) -> None:
@@ -361,13 +374,23 @@ class UserView(BaseView):
 
     @intercept_interaction
     async def server_selected(self) -> None:
+        user: User = self.user
+        selected_player = self.player_select.selected_object(user.players)
         self.server_select.selected = self.server_select.value
+        selected_server = self.server_select.selected_object(self.servers)
+        if selected_player.server != selected_server:
+            selected_player.server = selected_server
+            self.session.add(selected_player)
         self.update_view()
-        await self.refresh()
+        await self.interact()
 
     @intercept_interaction
     async def modify_specs(self) -> None:
-        await self.refresh(content="modify specs")
+        user: User = self.user
+        spec_view = await SpecializationView.create(
+            self.interaction, self.session, self.player_select.selected_object(user.players)
+        )
+        await self.interact(view=spec_view, embeds=[])
 
     @intercept_interaction
     async def save(self) -> None:
@@ -382,6 +405,7 @@ class UserView(BaseView):
     def update_view(self) -> None:
         self.player_select.show()
         self.server_select.show()
+        self.server_select.disabled = self.player_select.disabled
         player_is_selected = self.player_select.has_selected
         self.modify_player_button.disabled = not player_is_selected
         self.reset_player_button.disabled = not player_is_selected
@@ -406,7 +430,7 @@ class SpecializationView(BaseView):
         self.players_view_button: Optional[BaseButton] = None
         self.save_button: Optional[BaseButton] = None
         self.cancel_button: Optional[BaseButton] = None
-        self.current_level: int = 0
+        self.current_level: int = 5
 
     async def load_database_objects(self) -> None:
         await self.session.refresh(self.player.server.scenario, ["specializations"])
@@ -423,35 +447,69 @@ class SpecializationView(BaseView):
         self.next_spec_button = BaseButton(emoji=emoji_next, callback=self.next_spec)
         self.last_spec_button = BaseButton(emoji=emoji_last, callback=self.last_spec)
 
+        for _ in range(3):
+            select_item = SingleSelect[Specialization](
+                option_label=attrgetter("name"), option_value=attrgetter("lower_name"), callback=self.select_spec
+            )
+            select_item.callback = functools.partial(select_item.callback, select_item)
+            self.spec_selects.append(select_item)
+
         self.players_view_button = BaseButton(
             label="Select Player", style=discord.ButtonStyle.primary, callback=self.players_view
         )
         self.save_button = BaseButton(label="Save", style=discord.ButtonStyle.success, callback=self.save)
         self.cancel_button = BaseButton(label="Cancel", style=discord.ButtonStyle.danger, callback=self.cancel)
 
+        layout: Layout = [
+            [
+                self.clear_spec_button,
+                self.first_spec_button,
+                self.prev_spec_button,
+                self.next_spec_button,
+                self.last_spec_button,
+            ],
+            *[[select_item] for select_item in self.spec_selects],
+            [self.players_view_button, self.save_button, self.cancel_button],
+        ]
+        self.add_layout(layout)
+
     @intercept_interaction
     async def clear_spec(self) -> None:
-        await self.refresh(content="clear_spec")
+        self.update_view()
+        await self.interact(content="clear_spec")
 
     @intercept_interaction
     async def first_spec(self) -> None:
-        await self.refresh(content="first_spec")
+        self.current_level = MIN_LEVEL
+        self.update_view()
+        await self.interact(content="first_spec")
 
     @intercept_interaction
     async def prev_spec(self) -> None:
-        await self.refresh(content="prev_spec")
+        self.current_level -= LEVEL_INCREMENT
+        self.update_view()
+        await self.interact(content="prev_spec")
 
     @intercept_interaction
     async def next_spec(self) -> None:
-        await self.refresh(content="next_spec")
+        self.current_level += LEVEL_INCREMENT
+        self.update_view()
+        await self.interact(content="next_spec")
 
     @intercept_interaction
     async def last_spec(self) -> None:
-        await self.refresh(content="last_spec")
+        self.current_level = MAX_LEVEL
+        self.update_view()
+        await self.interact(content="last_spec")
+
+    @intercept_interaction
+    async def select_spec(self, select_item: SingleSelect[Specialization]) -> None:
+        self.update_view()
+        await self.interact(content="selected spec")
 
     @intercept_interaction
     async def players_view(self) -> None:
-        await self.refresh(content="players_view")
+        await self.interact(content="players_view")
 
     @intercept_interaction
     async def save(self) -> None:
@@ -464,4 +522,10 @@ class SpecializationView(BaseView):
         await self.finish(content="Changes Canceled")
 
     def update_view(self) -> None:
-        pass
+        for select_item in self.spec_selects:
+            select_item.show()
+        self.clear_spec_button.disabled = all(not select_item.has_selected for select_item in self.spec_selects)
+        self.first_spec_button.disabled = self.current_level == MIN_LEVEL
+        self.prev_spec_button.disabled = self.current_level == MIN_LEVEL
+        self.next_spec_button.disabled = self.current_level == MAX_LEVEL
+        self.last_spec_button.disabled = self.current_level == MAX_LEVEL
