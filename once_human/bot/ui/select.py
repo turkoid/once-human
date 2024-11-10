@@ -164,6 +164,10 @@ class BaseSelect[T: Base](discord.ui.Select):
 
 
 class SingleSelect[T: Base](BaseSelect[T]):
+    def __init__(self, **kwargs) -> None:
+        kwargs["max_values"] = 1
+        super().__init__(**kwargs)
+
     def _get_values(self, selected: Optional[SingleSelected[T]]) -> list[str]:
         if isinstance(selected, list):
             raise ValueError("Multiple selected not allowed for single selected")
