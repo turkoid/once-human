@@ -11,6 +11,7 @@ from sqlalchemy import (
     func,
     Index,
     String,
+    ColumnElement,
 )
 from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -60,6 +61,11 @@ class Player(Base):
     def lower_name(self) -> str:
         return self.name.lower()
 
+    @lower_name.inplace.expression
+    @classmethod
+    def _lower_name(cls) -> ColumnElement[str]:
+        return func.lower(cls.name)
+
     __table_args__ = (Index(f"{__tablename__}_user_id_lower_name_key", "user_id", func.lower(name), unique=True),)
 
 
@@ -91,6 +97,11 @@ class Specialization(Base):
     @hybrid_property
     def lower_name(self) -> str:
         return self.name.lower()
+
+    @lower_name.inplace.expression
+    @classmethod
+    def _lower_name(cls) -> ColumnElement[str]:
+        return func.lower(cls.name)
 
     __table_args__ = (Index(f"{__tablename__}_lower_name_key", func.lower(name), unique=True),)
 
@@ -132,6 +143,11 @@ class Scenario(Base):
     def lower_name(self) -> str:
         return self.name.lower()
 
+    @lower_name.inplace.expression
+    @classmethod
+    def _lower_name(cls) -> ColumnElement[str]:
+        return func.lower(cls.name)
+
     __table_args__ = (Index(f"{__tablename__}_lower_name_key", func.lower(name), unique=True),)
 
 
@@ -146,5 +162,10 @@ class Server(Base):
     @hybrid_property
     def lower_name(self) -> str:
         return self.name.lower()
+
+    @lower_name.inplace.expression
+    @classmethod
+    def _lower_name(cls) -> ColumnElement[str]:
+        return func.lower(cls.name)
 
     __table_args__ = (Index(f"{__tablename__}_lower_name_key", func.lower(name), unique=True),)
