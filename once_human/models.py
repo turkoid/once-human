@@ -131,10 +131,9 @@ class Scenario(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str_100] = mapped_column()
-    specializations: Mapped[dict[str, Specialization]] = relationship(
+    specializations: Mapped[list[Specialization]] = relationship(
         secondary=scenario_specializations,
         back_populates="scenarios",
-        collection_class=attribute_keyed_dict("lower_name"),
         cascade="all, delete",
         passive_deletes=True,
         order_by="Specialization.levels, Specialization.lower_name",
