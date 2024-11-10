@@ -7,15 +7,15 @@ from operator import attrgetter
 from typing import Optional, Awaitable, Self, Callable, Any
 import discord
 
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from once_human.bot.ui.button import BaseButton
 from once_human.bot.ui.embed import Error, TimedEmbed
 from once_human.bot.ui.modal import BaseModal
-from once_human.bot.ui.select import SingleSelect
-from once_human.bot.utils import response, InteractionCallback
+from once_human.bot.ui.select import SingleSelect, SingleSelected
+from once_human.bot.utils import response, InteractionCallback, ZERO_WIDTH_SPACE
 from once_human.models import Player, Server, User, Specialization
 
 type Layout = list[list[discord.ui.Item]]
@@ -49,10 +49,8 @@ def intercept_interaction(orig_func: DecoratedCallback) -> InteractionCallback:
 
 
 class BaseView(discord.ui.View, abc.ABC):
-    def __init__(
-        self, interaction: discord.Interaction, session: AsyncSession, *args: Any, timeout: Optional[float] = 180.0
-    ) -> None:
-        super().__init__(timeout=timeout)
+    def __init__(self, interaction: discord.Interaction, session: AsyncSession, *args: Any, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self.interaction = interaction
         self.session = session
         self.static_embeds: list[discord.Embed] = []
@@ -64,7 +62,7 @@ class BaseView(discord.ui.View, abc.ABC):
 
     @classmethod
     async def create(
-        cls, interaction: discord.Interaction, session: AsyncSession, *args: Any, timeout: Optional[float] = 100.0
+        cls, interaction: discord.Interaction, session: AsyncSession, *args: Any, timeout: Optional[float] = None
     ) -> Self:
         view = cls(interaction, session, *args, timeout=timeout)
         await view.load_database_objects()
@@ -201,9 +199,8 @@ class UserView(BaseView):
             )
             self.session.add(user)
         self.user = user
-        self.servers = (
-            await self.session.scalars(select(Server).order_by(Server.name).options(selectinload(Server.scenario)))
-        ).all()
+        stmt = select(Server).order_by(Server.name).options(selectinload(Server.scenario))
+        self.servers = (await self.session.scalars(stmt)).all()
 
     def build_ui(self) -> None:
         user: User = self.user
@@ -233,6 +230,8 @@ class UserView(BaseView):
             callback=self.server_selected,
         )
         self.server_select.refresh(self.servers)
+        if user.players:
+            self._select_player(user.players[0])
         self.modify_specs_button = BaseButton(
             label="Specializations", style=discord.ButtonStyle.primary, callback=self.modify_specs
         )
@@ -248,6 +247,18 @@ class UserView(BaseView):
             [self.modify_specs_button, self.save_button, self.cancel_button],
         ]
         self.add_layout(layout)
+
+    def _select_player(self, player: SingleSelected[Player]) -> Optional[Player]:
+        user: User = self.user
+        self.player_select.selected = player
+        selected_player: Player = self.player_select.selected_object(user.players)
+        self._select_server(selected_player.server if selected_player else None)
+        return selected_player
+
+    def _select_server(self, server: SingleSelected[Server]) -> Optional[Server]:
+        self.server_select.selected = server
+        selected_server: Server = self.server_select.selected_object(self.servers)
+        return selected_server
 
     @staticmethod
     def _create_player_input(
@@ -365,19 +376,15 @@ class UserView(BaseView):
 
     @intercept_interaction
     async def player_selected(self) -> None:
-        user: User = self.user
-        self.player_select.selected = self.player_select.value
-        selected_player = self.player_select.selected_object(user.players)
-        self.server_select.selected = selected_player.server
+        selected_player = self._select_player(self.player_select.value)
         self.update_view()
         await self.interact(embeds=[self._create_player_embed(selected_player)])
 
     @intercept_interaction
     async def server_selected(self) -> None:
+        selected_server = self._select_server(self.server_select.value)
         user: User = self.user
         selected_player = self.player_select.selected_object(user.players)
-        self.server_select.selected = self.server_select.value
-        selected_server = self.server_select.selected_object(self.servers)
         if selected_player.server != selected_server:
             selected_player.server = selected_server
             self.session.add(selected_player)
@@ -420,7 +427,11 @@ class SpecializationView(BaseView):
     ) -> None:
         super().__init__(interaction, session, timeout=timeout)
         self.player: Player = player
-        self.specs: Optional[list[Specialization]] = None
+        self.specs: list[Specialization] = []
+        self.server_players: Optional[list[Player]] = None
+        self.specs_by_level: dict[int, list[Specialization]] = {}
+        self.current_level: int = 5
+
         self.clear_spec_button: Optional[BaseButton] = None
         self.first_spec_button: Optional[BaseButton] = None
         self.prev_spec_button: Optional[BaseButton] = None
@@ -430,11 +441,20 @@ class SpecializationView(BaseView):
         self.players_view_button: Optional[BaseButton] = None
         self.save_button: Optional[BaseButton] = None
         self.cancel_button: Optional[BaseButton] = None
-        self.current_level: int = 5
 
     async def load_database_objects(self) -> None:
         await self.session.refresh(self.player.server.scenario, ["specializations"])
         self.specs = self.player.server.scenario.specializations
+        for spec in self.specs:
+            for level in spec.levels:
+                self.specs_by_level.setdefault(level, []).append(spec)
+        stmt = (
+            select(Player)
+            .where(and_(Player.server == self.player.server, Player.id != self.player.id))
+            .order_by(Player.lower_name)
+            .options(selectinload(Player.player_specializations))
+        )
+        self.server_players = (await self.session.scalars(stmt)).all()
 
     def build_ui(self) -> None:
         self.clear_spec_button = BaseButton(label="Clear", style=discord.ButtonStyle.primary, callback=self.clear_spec)
@@ -453,7 +473,7 @@ class SpecializationView(BaseView):
             )
             select_item.callback = functools.partial(select_item.callback, select_item)
             self.spec_selects.append(select_item)
-
+        self._refresh_specs()
         self.players_view_button = BaseButton(
             label="Select Player", style=discord.ButtonStyle.primary, callback=self.players_view
         )
@@ -473,6 +493,30 @@ class SpecializationView(BaseView):
         ]
         self.add_layout(layout)
 
+    def _refresh_specs(self) -> None:
+        level_specs = self.specs_by_level.get(self.current_level, [])
+        player_spec = self.player.specializations.get(self.current_level, None)
+        player_specs = [spec for level, spec in self.player.specializations.items() if level != self.current_level]
+        level_specs = [spec for spec in level_specs if spec not in player_specs]
+        for i, select_item in enumerate(self.spec_selects):
+            lower_bound = i * 25
+            upper_bound = lower_bound + 25
+            select_item.refresh(level_specs[lower_bound:upper_bound], selected=player_spec)
+            if select_item.options:
+                placeholder = f"{select_item.options[0].label[:]} - {select_item.options[-1].label[:]}"
+            else:
+                placeholder = ZERO_WIDTH_SPACE
+            select_item.placeholder = placeholder
+
+    def _select_spec(self, spec: SingleSelected[Specialization]) -> Optional[Specialization]:
+        selected_spec = None
+        level_specs = self.specs_by_level[self.current_level]
+        for select_item in self.spec_selects:
+            select_item.selected = spec
+            if not selected_spec:
+                selected_spec = select_item.selected_object(level_specs)
+        return selected_spec
+
     @intercept_interaction
     async def clear_spec(self) -> None:
         self.update_view()
@@ -481,29 +525,38 @@ class SpecializationView(BaseView):
     @intercept_interaction
     async def first_spec(self) -> None:
         self.current_level = MIN_LEVEL
+        self._refresh_specs()
         self.update_view()
         await self.interact(content="first_spec")
 
     @intercept_interaction
     async def prev_spec(self) -> None:
         self.current_level -= LEVEL_INCREMENT
+        self._refresh_specs()
         self.update_view()
         await self.interact(content="prev_spec")
 
     @intercept_interaction
     async def next_spec(self) -> None:
         self.current_level += LEVEL_INCREMENT
+        self._refresh_specs()
         self.update_view()
         await self.interact(content="next_spec")
 
     @intercept_interaction
     async def last_spec(self) -> None:
         self.current_level = MAX_LEVEL
+        self._refresh_specs()
         self.update_view()
         await self.interact(content="last_spec")
 
     @intercept_interaction
     async def select_spec(self, select_item: SingleSelect[Specialization]) -> None:
+        selected_spec = self._select_spec(select_item.value)
+        player_spec = self.player.specializations.get(self.current_level, None)
+        if player_spec != selected_spec:
+            self.player.specializations[self.current_level] = selected_spec
+            self.session.add(self.player)
         self.update_view()
         await self.interact(content="selected spec")
 
