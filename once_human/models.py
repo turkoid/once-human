@@ -88,7 +88,7 @@ class Specialization(Base):
     category: Mapped[str_100]
     identity: Mapped[str_100]
     description: Mapped[str]
-    icon_url: Mapped[str]
+    icon_url: Mapped[Optional[str]]
     scenarios: Mapped[list[Scenario]] = relationship(
         secondary=scenario_specializations,
         back_populates="specializations",
