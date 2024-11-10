@@ -1,0 +1,15 @@
+from collections.abc import Callable, Awaitable
+
+import discord
+from discord import InteractionResponse
+
+from once_human.models import Base
+
+
+type InteractionCallback[T] = Callable[[T, ..., discord.Interaction], Awaitable[None]]
+type DatabaseModel[T: Base, R] = Callable[[T], R]
+
+
+def response(interaction: discord.Interaction) -> InteractionResponse:
+    # just a way to avoid that bad type hinting of discord.py
+    return interaction.response
