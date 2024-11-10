@@ -124,7 +124,7 @@ class Scenario(Base):
         collection_class=attribute_keyed_dict("lower_name"),
         cascade="all, delete",
         passive_deletes=True,
-        order_by="Specialization.lower_name",
+        order_by="Specialization.levels, Specialization.lower_name",
     )
     servers: Mapped[list[Server]] = relationship(back_populates="scenario", order_by="Server.lower_name")
 
