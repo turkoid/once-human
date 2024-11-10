@@ -4,7 +4,7 @@ import functools
 import inspect
 from abc import abstractmethod
 from operator import attrgetter
-from typing import Optional, Awaitable, Self, Callable
+from typing import Optional, Awaitable, Self, Callable, Any
 import discord
 
 from sqlalchemy import select
@@ -16,7 +16,7 @@ from once_human.bot.ui.embed import Error, TimedEmbed
 from once_human.bot.ui.modal import BaseModal
 from once_human.bot.ui.select import SingleSelect
 from once_human.bot.utils import response, InteractionCallback
-from once_human.models import Player, Server, User
+from once_human.models import Player, Server, User, Specialization
 
 type Layout = list[list[discord.ui.Item]]
 type DecoratedCallback[**P] = Callable[[P], Awaitable[None]]
@@ -46,7 +46,7 @@ def intercept_interaction(orig_func: DecoratedCallback) -> InteractionCallback:
 
 class BaseView(discord.ui.View, abc.ABC):
     def __init__(
-        self, interaction: discord.Interaction, session: AsyncSession, *args, timeout: Optional[float] = 180.0
+        self, interaction: discord.Interaction, session: AsyncSession, *args: Any, timeout: Optional[float] = 180.0
     ) -> None:
         super().__init__(timeout=timeout)
         self.interaction = interaction
@@ -60,7 +60,7 @@ class BaseView(discord.ui.View, abc.ABC):
 
     @classmethod
     async def create(
-        cls, interaction: discord.Interaction, session: AsyncSession, *args, timeout: Optional[float] = 100.0
+        cls, interaction: discord.Interaction, session: AsyncSession, *args: Any, timeout: Optional[float] = 100.0
     ) -> Self:
         view = cls(interaction, session, *args, timeout=timeout)
         await view.load_database_objects()
@@ -68,7 +68,6 @@ class BaseView(discord.ui.View, abc.ABC):
         view.update_view()
         return view
 
-    @abstractmethod
     async def load_database_objects(self) -> None:
         pass
 
@@ -195,7 +194,6 @@ class UserView(BaseView):
 
     def build_ui(self) -> None:
         user: User = self.user
-
         self.new_player_button = BaseButton(label="New", style=discord.ButtonStyle.primary, callback=self.new_player)
         self.modify_player_button = BaseButton(
             label="Modify", style=discord.ButtonStyle.secondary, callback=self.modify_player
@@ -380,7 +378,6 @@ class UserView(BaseView):
     async def cancel(self) -> None:
         await self.session.rollback()
         await self.finish(content="Changes Canceled")
-        return
 
     def update_view(self) -> None:
         self.player_select.show()
@@ -391,3 +388,80 @@ class UserView(BaseView):
         self.delete_player_button.disabled = not player_is_selected
         server_is_selected = self.server_select.has_selected
         self.modify_specs_button.disabled = not player_is_selected and not server_is_selected
+
+
+class SpecializationView(BaseView):
+    def __init__(
+        self, interaction: discord.Interaction, session: AsyncSession, player: Player, timeout: Optional[float] = 180.0
+    ) -> None:
+        super().__init__(interaction, session, timeout=timeout)
+        self.player: Player = player
+        self.specs: Optional[list[Specialization]] = None
+        self.clear_spec_button: Optional[BaseButton] = None
+        self.first_spec_button: Optional[BaseButton] = None
+        self.prev_spec_button: Optional[BaseButton] = None
+        self.next_spec_button: Optional[BaseButton] = None
+        self.last_spec_button: Optional[BaseButton] = None
+        self.spec_selects: list[SingleSelect[Specialization]] = []
+        self.players_view_button: Optional[BaseButton] = None
+        self.save_button: Optional[BaseButton] = None
+        self.cancel_button: Optional[BaseButton] = None
+        self.current_level: int = 0
+
+    async def load_database_objects(self) -> None:
+        await self.session.refresh(self.player.server.scenario, ["specializations"])
+        self.specs = self.player.server.scenario.specializations
+
+    def build_ui(self) -> None:
+        self.clear_spec_button = BaseButton(label="Clear", style=discord.ButtonStyle.primary, callback=self.clear_spec)
+        emoji_first = "⏮️"
+        emoji_prev = "⏪"
+        emoji_next = "⏩"
+        emoji_last = "⏭️"
+        self.first_spec_button = BaseButton(emoji=emoji_first, callback=self.first_spec)
+        self.prev_spec_button = BaseButton(emoji=emoji_prev, callback=self.prev_spec)
+        self.next_spec_button = BaseButton(emoji=emoji_next, callback=self.next_spec)
+        self.last_spec_button = BaseButton(emoji=emoji_last, callback=self.last_spec)
+
+        self.players_view_button = BaseButton(
+            label="Select Player", style=discord.ButtonStyle.primary, callback=self.players_view
+        )
+        self.save_button = BaseButton(label="Save", style=discord.ButtonStyle.success, callback=self.save)
+        self.cancel_button = BaseButton(label="Cancel", style=discord.ButtonStyle.danger, callback=self.cancel)
+
+    @intercept_interaction
+    async def clear_spec(self) -> None:
+        await self.refresh(content="clear_spec")
+
+    @intercept_interaction
+    async def first_spec(self) -> None:
+        await self.refresh(content="first_spec")
+
+    @intercept_interaction
+    async def prev_spec(self) -> None:
+        await self.refresh(content="prev_spec")
+
+    @intercept_interaction
+    async def next_spec(self) -> None:
+        await self.refresh(content="next_spec")
+
+    @intercept_interaction
+    async def last_spec(self) -> None:
+        await self.refresh(content="last_spec")
+
+    @intercept_interaction
+    async def players_view(self) -> None:
+        await self.refresh(content="players_view")
+
+    @intercept_interaction
+    async def save(self) -> None:
+        await self.session.commit()
+        await self.finish(content="Saved")
+
+    @intercept_interaction
+    async def cancel(self) -> None:
+        await self.session.rollback()
+        await self.finish(content="Changes Canceled")
+
+    def update_view(self) -> None:
+        pass
