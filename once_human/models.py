@@ -31,7 +31,7 @@ class User(Base):
     username: Mapped[str_100] = mapped_column(unique=True)
     display_name: Mapped[str_100]
     players: Mapped[list[Player]] = relationship(
-        back_populates="user", cascade="all, delete-orphan", passive_deletes=True, order_by="Player.name"
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True, order_by="Player.lower_name"
     )
 
 
@@ -49,6 +49,7 @@ class Player(Base):
         collection_class=attribute_keyed_dict("level"),
         cascade="all, delete-orphan",
         passive_deletes=True,
+        order_by="PlayerSpecialization.level",
     )
     specializations: AssociationProxy[dict[int, Specialization]] = association_proxy(
         "player_specializations",
@@ -123,8 +124,9 @@ class Scenario(Base):
         collection_class=attribute_keyed_dict("lower_name"),
         cascade="all, delete",
         passive_deletes=True,
+        order_by="Specialization.lower_name",
     )
-    servers: Mapped[list[Server]] = relationship(back_populates="scenario")
+    servers: Mapped[list[Server]] = relationship(back_populates="scenario", order_by="Server.lower_name")
 
     @hybrid_property
     def lower_name(self) -> str:
