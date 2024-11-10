@@ -2,6 +2,7 @@ import discord
 from discord import app_commands, Interaction
 from discord.ext import commands
 
+from once_human.bot.utils import response
 from once_human.config import config
 
 
@@ -11,7 +12,7 @@ class OnceHumanBotTree(app_commands.CommandTree):
         interaction: Interaction[discord.Client],
         error: app_commands.AppCommandError | Exception,
     ) -> None:
-        await interaction.response.send_message(error)
+        await response(interaction).send_message(error)
 
 
 class OnceHumanBot(commands.Bot):
@@ -27,7 +28,7 @@ class OnceHumanBot(commands.Bot):
         print("------")
 
     async def setup_hook(self) -> None:
-        for ext in ["base", "specialization"]:
+        for ext in ["admin", "specialization"]:
             await self.load_extension(f"cogs.{ext}")
 
         self.tree.copy_global_to(guild=self.guild_id)
