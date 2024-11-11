@@ -201,7 +201,7 @@ class SingleSelect[T: Base](BaseSelect[T]):
         super().refresh(objects, selected=selected)
 
     def select(self, selected: SingleSelected[T]) -> None:
-        super().select(selected)
+        self.selected = selected
 
     @property
     def selected(self) -> Optional[str]:
@@ -325,9 +325,9 @@ class SelectGroup[T: Base]:
 
 
 class SingleSelectGroup[T: Base](SelectGroup[T]):
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         kwargs["max_values"] = 1
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
 
     def _normalize_selected(self, selected: Optional[SingleSelected[T]]) -> list[str]:
         if isinstance(selected, list):
@@ -338,7 +338,7 @@ class SingleSelectGroup[T: Base](SelectGroup[T]):
         super().refresh(objects, selected=selected)
 
     def select(self, selected: SingleSelected[T]) -> None:
-        super().select(selected)
+        self.selected = selected
 
     @property
     def selected(self) -> Optional[str]:
