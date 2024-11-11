@@ -1,11 +1,14 @@
 import functools
 from itertools import zip_longest
-from typing import Optional, Any, Callable
+from typing import Any
+from typing import Callable
+from typing import Optional
 
 import discord
 
+from once_human.bot.utils import DatabaseModel
+from once_human.bot.utils import InteractionCallback
 from once_human.models import Base
-from once_human.bot.utils import DatabaseModel, InteractionCallback
 
 type Selected[S: Base] = str | list[str] | S | list[S]
 type SingleSelected[S: Base] = str | S

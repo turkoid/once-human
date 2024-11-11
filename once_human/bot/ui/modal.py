@@ -1,6 +1,5 @@
 import discord.ui
 
-
 from once_human.bot.utils import InteractionCallback
 
 

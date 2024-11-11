@@ -1,4 +1,5 @@
-from collections.abc import Callable, Awaitable
+from collections.abc import Awaitable
+from collections.abc import Callable
 
 import discord
 from discord import InteractionResponse

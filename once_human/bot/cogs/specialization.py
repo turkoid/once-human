@@ -6,7 +6,6 @@ from once_human import database
 from once_human.bot.checks import is_user
 from once_human.bot.cogs.base import BaseCog
 from once_human.bot.ui.views.user import UserView
-
 from once_human.bot.utils import response
 
 

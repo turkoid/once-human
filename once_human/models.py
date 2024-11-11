@@ -1,23 +1,28 @@
 from __future__ import annotations
 
-from typing import Optional, Annotated
+from typing import Annotated
+from typing import Optional
 
-from sqlalchemy import (
-    ForeignKey,
-    Table,
-    Column,
-    BigInteger,
-    UniqueConstraint,
-    func,
-    Index,
-    String,
-    ColumnElement,
-    ARRAY,
-    Integer,
-)
-from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
+from sqlalchemy import ARRAY
+from sqlalchemy import BigInteger
+from sqlalchemy import Column
+from sqlalchemy import ColumnElement
+from sqlalchemy import ForeignKey
+from sqlalchemy import func
+from sqlalchemy import Index
+from sqlalchemy import Integer
+from sqlalchemy import String
+from sqlalchemy import Table
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.ext.associationproxy import AssociationProxy
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, Mapped, DeclarativeBase, mapped_column, attribute_keyed_dict, registry
+from sqlalchemy.orm import attribute_keyed_dict
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import registry
+from sqlalchemy.orm import relationship
 
 
 str_100 = Annotated[str, 100]

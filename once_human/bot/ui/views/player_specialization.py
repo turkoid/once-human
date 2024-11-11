@@ -1,22 +1,24 @@
 from operator import attrgetter
 from typing import Optional
-import discord
 
-from sqlalchemy import select, and_
+import discord
+from sqlalchemy import and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from once_human.bot.ui.button import BaseButton
-from once_human.bot.ui.select import (
-    SingleSelect,
-    SingleSelected,
-    SingleSelectGroup,
-    BaseSelect,
-    DISCORD_SELECT_MAX,
-)
-from once_human.bot.ui.views.base import BaseView, Layout, intercept_interaction
+from once_human.bot.ui.select import BaseSelect
+from once_human.bot.ui.select import DISCORD_SELECT_MAX
+from once_human.bot.ui.select import SingleSelect
+from once_human.bot.ui.select import SingleSelected
+from once_human.bot.ui.select import SingleSelectGroup
+from once_human.bot.ui.views.base import BaseView
+from once_human.bot.ui.views.base import intercept_interaction
+from once_human.bot.ui.views.base import Layout
 from once_human.bot.utils import ZERO_WIDTH_SPACE
-from once_human.models import Player, Specialization
+from once_human.models import Player
+from once_human.models import Specialization
 
 MIN_LEVEL = 5
 MAX_LEVEL = 50

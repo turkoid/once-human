@@ -3,13 +3,19 @@ import asyncio
 import functools
 import inspect
 from abc import abstractmethod
-from typing import Optional, Awaitable, Self, Callable, Any
-import discord
+from typing import Any
+from typing import Awaitable
+from typing import Callable
+from typing import Optional
+from typing import Self
 
+import discord
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from once_human.bot.ui.embed import Error, TimedEmbed
-from once_human.bot.utils import response, InteractionCallback
+from once_human.bot.ui.embed import Error
+from once_human.bot.ui.embed import TimedEmbed
+from once_human.bot.utils import InteractionCallback
+from once_human.bot.utils import response
 
 type Layout = list[list[discord.ui.Item]]
 type DecoratedCallback[**P] = Callable[[P], Awaitable[None]]

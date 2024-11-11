@@ -1,19 +1,24 @@
 import functools
 from operator import attrgetter
 from typing import Optional
-import discord
 
+import discord
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from once_human.bot.ui.button import BaseButton
 from once_human.bot.ui.modal import BaseModal
-from once_human.bot.ui.select import SingleSelect, SingleSelected
-from once_human.bot.ui.views.base import BaseView, intercept_interaction, Layout
+from once_human.bot.ui.select import SingleSelect
+from once_human.bot.ui.select import SingleSelected
+from once_human.bot.ui.views.base import BaseView
+from once_human.bot.ui.views.base import intercept_interaction
+from once_human.bot.ui.views.base import Layout
 from once_human.bot.ui.views.player_specialization import SpecializationView
 from once_human.bot.utils import InteractionCallback
-from once_human.models import Player, Server, User
+from once_human.models import Player
+from once_human.models import Server
+from once_human.models import User
 
 
 class UserView(BaseView):
