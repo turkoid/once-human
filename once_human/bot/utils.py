@@ -6,7 +6,7 @@ from discord import InteractionResponse
 from once_human.models import Base
 
 
-type InteractionCallback[T] = Callable[[T, ..., discord.Interaction], Awaitable[None]]
+type InteractionCallback[T] = Callable[[T, discord.Interaction], Awaitable[None]]
 type DatabaseModel[T: Base, R] = Callable[[T], R]
 
 ZERO_WIDTH_SPACE = "\u200b"

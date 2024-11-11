@@ -1,5 +1,5 @@
 from itertools import zip_longest
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 
 import discord
 
@@ -59,6 +59,7 @@ class NullSelectOption(discord.SelectOption):
 
 
 NULL_SELECT_OPTION = NullSelectOption()
+DISCORD_SELECT_MAX = 25
 
 
 class BaseSelect[T: Base](discord.ui.Select):
@@ -69,10 +70,18 @@ class BaseSelect[T: Base](discord.ui.Select):
         option_value: Optional[DatabaseModel[T, Optional[str]]] = None,
         option_description: Optional[DatabaseModel[T, Optional[str]]] = None,
         callback: InteractionCallback,
+        min_values: int = 1,
+        max_values: Optional[int] = 1,
         **kwargs,
     ) -> None:
         self._underlying_select: Optional[discord.SelectMenu] = None
-        super().__init__(**kwargs)
+        if max_values is None:
+            max_values = DISCORD_SELECT_MAX
+        if min_values < 0 or min_values > max_values:
+            raise ValueError(f"min_values must beast at least 0 and no greater than {max_values}")
+        if max_values < min_values or max_values > DISCORD_SELECT_MAX:
+            raise ValueError(f"max_values must beast at least {min_values} and no greater than {DISCORD_SELECT_MAX}")
+        super().__init__(min_values=min_values, max_values=max_values, **kwargs)
         self.option_label = option_label
         self.option_value = option_value
         self.option_description = option_description
@@ -80,11 +89,11 @@ class BaseSelect[T: Base](discord.ui.Select):
 
     def _normalize_selected(self, selected: Optional[Selected[T]]) -> list[str]:
         if not selected:
-            return []
+            values = []
         elif isinstance(selected, str):
-            return [selected]
+            values = [selected]
         elif isinstance(selected, Base):
-            return [self.option_value(selected)]
+            values = [self.option_value(selected)]
         elif isinstance(selected, list):
             values = []
             for entry in selected:
@@ -94,9 +103,12 @@ class BaseSelect[T: Base](discord.ui.Select):
                     values.append(self.option_value(entry))
                 else:
                     raise ValueError("Invalid selected value type")
-            return values
         else:
             raise ValueError("Invalid selected value type")
+        #
+        # if len(values) < self.min_values or len(values) > self.max_values:
+        #     f"The number of selected must be at least {self.min_values} and no greater than {self.max_values}"
+        return values
 
     def _refresh(self, objects: list[T], *, values: list[str]) -> None:
         self.options.clear()
@@ -182,7 +194,7 @@ class SingleSelect[T: Base](BaseSelect[T]):
 
     def _normalize_selected(self, selected: Optional[SingleSelected[T]]) -> list[str]:
         if isinstance(selected, list):
-            raise ValueError("Multiple selected not allowed for single selected")
+            raise ValueError("Multiple selected not allowed for single select")
         return super()._normalize_selected(selected)
 
     def refresh(self, objects: list[T], *, selected: Optional[SingleSelected[T]] = None) -> None:
@@ -212,32 +224,67 @@ class SingleSelect[T: Base](BaseSelect[T]):
         return self.values[0] if self.values else None
 
 
-class SelectGroup[T: Base, BS: BaseSelect]:
+class SelectGroup[T: Base]:
     def __init__(
         self,
         size: int,
         *,
-        select_class: type[BS],
-        # option_label: DatabaseModel[T, str],
-        # option_value: Optional[DatabaseModel[T, Optional[str]]] = None,
-        # option_description: Optional[DatabaseModel[T, Optional[str]]] = None,
-        # callback: InteractionCallback,
-        **kwargs: Any,
+        placeholder: Optional[str | Callable[[BaseSelect[T]], str]] = None,
+        min_values: int = 1,
+        max_values: Optional[int] = None,
+        option_label: DatabaseModel[T, str],
+        option_value: Optional[DatabaseModel[T, Optional[str]]] = None,
+        option_description: Optional[DatabaseModel[T, Optional[str]]] = None,
+        callback: InteractionCallback,
     ):
-        if size < 1 or size > 5:
+        if size < 2 or size > 5:
             raise ValueError("Size must be at least 2 and no greater than 5")
-        self.items: list[BaseSelect[T]] = [select_class(**kwargs) for _ in range(size)]
+        select_max = size * DISCORD_SELECT_MAX
+        if max_values is None:
+            max_values = select_max
+        if min_values < 0 or min_values > max_values:
+            raise ValueError(f"min_values must beast at least 0 and no greater than {max_values}")
+        if max_values < min_values or max_values > select_max:
+            raise ValueError(f"max_values must beast at least {min_values} and no greater than {select_max}")
+
+        self.placeholder = placeholder
+        self.min_values = min_values
+        self.max_values = max_values
+        self.items: list[BaseSelect[T]] = []
+        for _ in range(size):
+            item = BaseSelect(
+                min_values=min_values,
+                max_values=min(DISCORD_SELECT_MAX, self.max_values),
+                option_label=option_label,
+                option_value=option_value,
+                option_description=option_description,
+                callback=callback,
+            )
+            self.items.append(item)
+
+    @property
+    def values(self) -> list[str]:
+        values: list[str] = []
+        for item in self.items:
+            values.extend(item.values)
+        return values
 
     def _normalize_selected(self, selected: Optional[Selected[T]]) -> list[str]:
-        return self.items[0]._normalize_selected(selected)
+        values = self.items[0]._normalize_selected(selected)
+        # if len(values) < self.min_values or len(values) > self.max_values:
+        #     raise ValueError(
+        #         f"The number of selected must be at least {self.min_values} and no greater than {self.max_values}"
+        #     )
+        return values
 
     def refresh(self, objects: list[T], *, selected: Optional[Selected[T]] = None) -> None:
         values = self._normalize_selected(selected)
         for i, item in enumerate(self.items):
-            lower_bound = i * 25
-            upper_bound = lower_bound + 25
+            lower_bound = i * DISCORD_SELECT_MAX
+            upper_bound = lower_bound + DISCORD_SELECT_MAX
             item_objects = objects[lower_bound:upper_bound]
             item._refresh(item_objects, values=values)
+            item.placeholder = self.placeholder(item)
 
     def select(self, selected: Selected[T]) -> None:
         values = self._normalize_selected(selected)
@@ -275,3 +322,41 @@ class SelectGroup[T: Base, BS: BaseSelect]:
     def show(self) -> None:
         for item in self.items:
             item.show()
+
+
+class SingleSelectGroup[T: Base](SelectGroup[T]):
+    def __init__(self, **kwargs) -> None:
+        kwargs["max_values"] = 1
+        super().__init__(**kwargs)
+
+    def _normalize_selected(self, selected: Optional[SingleSelected[T]]) -> list[str]:
+        if isinstance(selected, list):
+            raise ValueError("Multiple selected not allowed for single selected")
+        return super()._normalize_selected(selected)
+
+    def refresh(self, objects: list[T], *, selected: Optional[SingleSelected[T]] = None) -> None:
+        super().refresh(objects, selected=selected)
+
+    def select(self, selected: SingleSelected[T]) -> None:
+        super().select(selected)
+
+    @property
+    def selected(self) -> Optional[str]:
+        selected = super().selected
+        return selected[0] if selected else None
+
+    @selected.setter
+    def selected(self, selected: Optional[SingleSelected[T]]) -> None:
+        super(SingleSelectGroup, self.__class__).selected.fset(self, selected)
+
+    def selected_objects(self, *args, **kwargs) -> None:
+        raise TypeError("Operation not supported for a single select")
+
+    def selected_object(self, objects: list[T]) -> Optional[T]:
+        selected_objs = super().selected_objects(objects)
+        return selected_objs[0] if selected_objs else None
+
+    @property
+    def value(self) -> Optional[str]:
+        values = self.values
+        return values[0] if values else None
