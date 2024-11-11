@@ -14,7 +14,7 @@ from once_human.bot.ui.select import SingleSelected
 from once_human.bot.ui.views.base import BaseView
 from once_human.bot.ui.views.base import intercept_interaction
 from once_human.bot.ui.views.base import Layout
-from once_human.bot.ui.views.player_specialization import SpecializationView
+from once_human.bot.ui.views.player_specialization import PlayerSpecializationView
 from once_human.bot.utils import InteractionCallback
 from once_human.models import Player
 from once_human.models import Server
@@ -254,7 +254,7 @@ class UserView(BaseView):
     @intercept_interaction
     async def modify_specs(self) -> None:
         user: User = self.user
-        spec_view = await SpecializationView.create(
+        spec_view = await PlayerSpecializationView.create(
             self.interaction, self.session, self.player_select.selected_object(user.players)
         )
         await self.interact(view=spec_view, embeds=[])

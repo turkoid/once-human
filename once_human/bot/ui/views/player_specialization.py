@@ -25,7 +25,7 @@ MAX_LEVEL = 50
 LEVEL_INCREMENT = 5
 
 
-class SpecializationView(BaseView):
+class PlayerSpecializationView(BaseView):
     def __init__(
         self, interaction: discord.Interaction, session: AsyncSession, player: Player, timeout: Optional[float] = 180.0
     ) -> None:
