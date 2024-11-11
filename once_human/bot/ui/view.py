@@ -14,7 +14,13 @@ from sqlalchemy.orm import selectinload
 from once_human.bot.ui.button import BaseButton
 from once_human.bot.ui.embed import Error, TimedEmbed
 from once_human.bot.ui.modal import BaseModal
-from once_human.bot.ui.select import SingleSelect, SingleSelected
+from once_human.bot.ui.select import (
+    SingleSelect,
+    SingleSelected,
+    SingleSelectGroup,
+    BaseSelect,
+    DISCORD_SELECT_MAX,
+)
 from once_human.bot.utils import response, InteractionCallback, ZERO_WIDTH_SPACE
 from once_human.models import Player, Server, User, Specialization
 
@@ -248,16 +254,16 @@ class UserView(BaseView):
         ]
         self.add_layout(layout)
 
-    def _select_player(self, player: SingleSelected[Player]) -> Optional[Player]:
+    def _select_player(self, player: Optional[SingleSelected[Player]]) -> Optional[Player]:
         user: User = self.user
         self.player_select.selected = player
-        selected_player: Player = self.player_select.selected_object(user.players)
+        selected_player = self.player_select.selected_object(user.players)
         self._select_server(selected_player.server if selected_player else None)
         return selected_player
 
-    def _select_server(self, server: SingleSelected[Server]) -> Optional[Server]:
+    def _select_server(self, server: Optional[SingleSelected[Server]]) -> Optional[Server]:
         self.server_select.selected = server
-        selected_server: Server = self.server_select.selected_object(self.servers)
+        selected_server = self.server_select.selected_object(self.servers)
         return selected_server
 
     @staticmethod
@@ -437,7 +443,7 @@ class SpecializationView(BaseView):
         self.prev_spec_button: Optional[BaseButton] = None
         self.next_spec_button: Optional[BaseButton] = None
         self.last_spec_button: Optional[BaseButton] = None
-        self.spec_selects: list[SingleSelect[Specialization]] = []
+        self.specs_select: Optional[SingleSelectGroup[Specialization]] = None
         self.players_view_button: Optional[BaseButton] = None
         self.save_button: Optional[BaseButton] = None
         self.cancel_button: Optional[BaseButton] = None
@@ -467,12 +473,21 @@ class SpecializationView(BaseView):
         self.next_spec_button = BaseButton(emoji=emoji_next, callback=self.next_spec)
         self.last_spec_button = BaseButton(emoji=emoji_last, callback=self.last_spec)
 
-        for _ in range(3):
-            select_item = SingleSelect[Specialization](
-                option_label=attrgetter("name"), option_value=attrgetter("lower_name"), callback=self.select_spec
-            )
-            select_item.callback = functools.partial(select_item.callback, select_item)
-            self.spec_selects.append(select_item)
+        def placeholder_gen(item: BaseSelect):
+            if item.options:
+                placeholder = f"{item.options[0].label[:20]} - {item.options[-1].label[:20]}"
+            else:
+                placeholder = ZERO_WIDTH_SPACE
+            return placeholder
+
+        size = int((max(len(specs) for specs in self.specs_by_level.values()) - 1) / DISCORD_SELECT_MAX) + 1
+        self.specs_select = SingleSelectGroup[Specialization](
+            size,
+            placeholder=placeholder_gen,
+            option_label=attrgetter("name"),
+            option_value=attrgetter("lower_name"),
+            callback=self.select_spec,
+        )
         self._refresh_specs()
         self.players_view_button = BaseButton(
             label="Select Player", style=discord.ButtonStyle.primary, callback=self.players_view
@@ -488,7 +503,7 @@ class SpecializationView(BaseView):
                 self.next_spec_button,
                 self.last_spec_button,
             ],
-            *[[select_item] for select_item in self.spec_selects],
+            *[[select_item] for select_item in self.specs_select.items],
             [self.players_view_button, self.save_button, self.cancel_button],
         ]
         self.add_layout(layout)
@@ -498,27 +513,20 @@ class SpecializationView(BaseView):
         player_spec = self.player.specializations.get(self.current_level, None)
         player_specs = [spec for level, spec in self.player.specializations.items() if level != self.current_level]
         level_specs = [spec for spec in level_specs if spec not in player_specs]
-        for i, select_item in enumerate(self.spec_selects):
-            lower_bound = i * 25
-            upper_bound = lower_bound + 25
-            select_item.refresh(level_specs[lower_bound:upper_bound], selected=player_spec)
-            if select_item.options:
-                placeholder = f"{select_item.options[0].label[:]} - {select_item.options[-1].label[:]}"
-            else:
-                placeholder = ZERO_WIDTH_SPACE
-            select_item.placeholder = placeholder
+        self.specs_select.refresh(level_specs, selected=player_spec)
 
-    def _select_spec(self, spec: SingleSelected[Specialization]) -> Optional[Specialization]:
-        selected_spec = None
+    def _select_spec(self, spec: Optional[SingleSelected[Specialization]]) -> Optional[Specialization]:
+        self.specs_select.selected = spec
         level_specs = self.specs_by_level[self.current_level]
-        for select_item in self.spec_selects:
-            select_item.selected = spec
-            if not selected_spec:
-                selected_spec = select_item.selected_object(level_specs)
+        selected_spec = self.specs_select.selected_object(level_specs)
         return selected_spec
 
     @intercept_interaction
     async def clear_spec(self) -> None:
+        self._select_spec(None)
+        if self.player.specializations.get(self.current_level, None):
+            del self.player.specializations[self.current_level]
+            self.session.add(self.player)
         self.update_view()
         await self.interact(content="clear_spec")
 
@@ -551,8 +559,8 @@ class SpecializationView(BaseView):
         await self.interact(content="last_spec")
 
     @intercept_interaction
-    async def select_spec(self, select_item: SingleSelect[Specialization]) -> None:
-        selected_spec = self._select_spec(select_item.value)
+    async def select_spec(self) -> None:
+        selected_spec = self._select_spec(self.specs_select.value)
         player_spec = self.player.specializations.get(self.current_level, None)
         if player_spec != selected_spec:
             self.player.specializations[self.current_level] = selected_spec
@@ -575,9 +583,8 @@ class SpecializationView(BaseView):
         await self.finish(content="Changes Canceled")
 
     def update_view(self) -> None:
-        for select_item in self.spec_selects:
-            select_item.show()
-        self.clear_spec_button.disabled = all(not select_item.has_selected for select_item in self.spec_selects)
+        self.specs_select.show()
+        self.clear_spec_button.disabled = not self.specs_select.has_selected
         self.first_spec_button.disabled = self.current_level == MIN_LEVEL
         self.prev_spec_button.disabled = self.current_level == MIN_LEVEL
         self.next_spec_button.disabled = self.current_level == MAX_LEVEL
