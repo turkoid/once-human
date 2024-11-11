@@ -65,9 +65,9 @@ class BaseSelect[T: Base](discord.ui.Select):
     def __init__(
         self,
         *,
-        option_label: DatabaseModel[T, str] = None,
-        option_value: DatabaseModel[T, Optional[str]] = None,
-        option_description: DatabaseModel[T, Optional[str]] = None,
+        option_label: DatabaseModel[T, str],
+        option_value: Optional[DatabaseModel[T, Optional[str]]] = None,
+        option_description: Optional[DatabaseModel[T, Optional[str]]] = None,
         callback: InteractionCallback,
         **kwargs,
     ) -> None:
@@ -78,7 +78,7 @@ class BaseSelect[T: Base](discord.ui.Select):
         self.option_description = option_description
         self.callback = callback
 
-    def _get_values(self, selected: Optional[Selected[T]]) -> list[str]:
+    def _normalize_selected(self, selected: Optional[Selected[T]]) -> list[str]:
         if not selected:
             return []
         elif isinstance(selected, str):
@@ -98,8 +98,7 @@ class BaseSelect[T: Base](discord.ui.Select):
         else:
             raise ValueError("Invalid selected value type")
 
-    def refresh(self, objects: list[T], *, selected: Optional[Selected[T]] = None) -> None:
-        values = self._get_values(selected)
+    def _refresh(self, objects: list[T], *, values: list[str]) -> None:
         self.options.clear()
         for obj in objects:
             kwargs: dict[str, str] = {}
@@ -111,24 +110,33 @@ class BaseSelect[T: Base](discord.ui.Select):
             opt.default = opt.value in values
             self.options.append(opt)
 
-    def select(self, selected: Selected[T]) -> None:
-        values = self._get_values(selected)
+    def refresh(self, objects: list[T], *, selected: Optional[Selected[T]] = None) -> None:
+        values = self._normalize_selected(selected)
+        self._refresh(objects, values=values)
+
+    def _select(self, values: list[str]) -> None:
         for opt in self.options:
             if opt.value in values:
                 opt.default = True
+
+    def select(self, selected: Selected[T]) -> None:
+        values = self._normalize_selected(selected)
+        self._select(values)
 
     @property
     def selected(self) -> list[str]:
         return [opt.value for opt in self.options if opt.default]
 
-    @selected.setter
-    def selected(self, selected: Optional[Selected[T]]) -> None:
-        values = self._get_values(selected)
+    def _selected(self, values: list[str]) -> None:
         for opt in self.options:
             opt.default = opt.value in values
 
-    def selected_objects(self, objects: list[T]) -> list[T]:
-        obj_values = {self.option_value(obj): obj for obj in objects}
+    @selected.setter
+    def selected(self, selected: Optional[Selected[T]]) -> None:
+        values = self._normalize_selected(selected)
+        self._selected(values)
+
+    def _selected_objects(self, obj_values: dict[str, T]) -> list[T]:
         selected: list[T] = []
         for opt in self.options:
             if opt.default:
@@ -137,6 +145,10 @@ class BaseSelect[T: Base](discord.ui.Select):
                     raise ValueError(f"{opt.value} does not exist in objects")
                 selected.append(obj)
         return selected
+
+    def selected_objects(self, objects: list[T]) -> list[T]:
+        obj_values = {self.option_value(obj): obj for obj in objects}
+        return self._selected_objects(obj_values)
 
     @property
     def has_selected(self) -> bool:
@@ -168,10 +180,10 @@ class SingleSelect[T: Base](BaseSelect[T]):
         kwargs["max_values"] = 1
         super().__init__(**kwargs)
 
-    def _get_values(self, selected: Optional[SingleSelected[T]]) -> list[str]:
+    def _normalize_selected(self, selected: Optional[SingleSelected[T]]) -> list[str]:
         if isinstance(selected, list):
             raise ValueError("Multiple selected not allowed for single selected")
-        return super()._get_values(selected)
+        return super()._normalize_selected(selected)
 
     def refresh(self, objects: list[T], *, selected: Optional[SingleSelected[T]] = None) -> None:
         super().refresh(objects, selected=selected)
@@ -198,3 +210,68 @@ class SingleSelect[T: Base](BaseSelect[T]):
     @property
     def value(self) -> Optional[str]:
         return self.values[0] if self.values else None
+
+
+class SelectGroup[T: Base, BS: BaseSelect]:
+    def __init__(
+        self,
+        size: int,
+        *,
+        select_class: type[BS],
+        # option_label: DatabaseModel[T, str],
+        # option_value: Optional[DatabaseModel[T, Optional[str]]] = None,
+        # option_description: Optional[DatabaseModel[T, Optional[str]]] = None,
+        # callback: InteractionCallback,
+        **kwargs: Any,
+    ):
+        if size < 1 or size > 5:
+            raise ValueError("Size must be at least 2 and no greater than 5")
+        self.items: list[BaseSelect[T]] = [select_class(**kwargs) for _ in range(size)]
+
+    def _normalize_selected(self, selected: Optional[Selected[T]]) -> list[str]:
+        return self.items[0]._normalize_selected(selected)
+
+    def refresh(self, objects: list[T], *, selected: Optional[Selected[T]] = None) -> None:
+        values = self._normalize_selected(selected)
+        for i, item in enumerate(self.items):
+            lower_bound = i * 25
+            upper_bound = lower_bound + 25
+            item_objects = objects[lower_bound:upper_bound]
+            item._refresh(item_objects, values=values)
+
+    def select(self, selected: Selected[T]) -> None:
+        values = self._normalize_selected(selected)
+        for item in self.items:
+            item._select(values)
+
+    @property
+    def selected(self) -> list[str]:
+        values: list[str] = []
+        for item in self.items:
+            values.extend(item.selected)
+        return values
+
+    @selected.setter
+    def selected(self, selected: Optional[Selected[T]]) -> None:
+        values = self._normalize_selected(selected)
+        for item in self.items:
+            item._selected(values)
+
+    def selected_objects(self, objects: list[T]) -> list[T]:
+        obj_values = {self.items[0].option_value(obj): obj for obj in objects}
+        selected: list[T] = []
+        for item in self.items:
+            item_selected = item._selected_objects(obj_values)
+            selected.extend(item_selected)
+        return selected
+
+    @property
+    def has_selected(self) -> bool:
+        for item in self.items:
+            if any(opt.default for opt in item.options):
+                return True
+        return False
+
+    def show(self) -> None:
+        for item in self.items:
+            item.show()
