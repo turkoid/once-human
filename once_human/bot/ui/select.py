@@ -105,9 +105,9 @@ class BaseSelect[T: Base](discord.ui.Select):
                     raise ValueError("Invalid selected value type")
         else:
             raise ValueError("Invalid selected value type")
-        #
-        # if len(values) < self.min_values or len(values) > self.max_values:
-        #     f"The number of selected must be at least {self.min_values} and no greater than {self.max_values}"
+
+        if values and (len(values) < self.min_values or len(values) > self.max_values):
+            f"The number of selected must be at least {self.min_values} and no greater than {self.max_values}"
         return values
 
     def _refresh(self, objects: list[T], *, values: list[str]) -> None:
@@ -271,10 +271,10 @@ class SelectGroup[T: Base]:
 
     def _normalize_selected(self, selected: Optional[Selected[T]]) -> list[str]:
         values = self.items[0]._normalize_selected(selected)
-        # if len(values) < self.min_values or len(values) > self.max_values:
-        #     raise ValueError(
-        #         f"The number of selected must be at least {self.min_values} and no greater than {self.max_values}"
-        #     )
+        if values and (len(values) < self.min_values or len(values) > self.max_values):
+            raise ValueError(
+                f"The number of selected must be at least {self.min_values} and no greater than {self.max_values}"
+            )
         return values
 
     def refresh(self, objects: list[T], *, selected: Optional[Selected[T]] = None) -> None:
