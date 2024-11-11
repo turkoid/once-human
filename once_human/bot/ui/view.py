@@ -475,7 +475,7 @@ class SpecializationView(BaseView):
 
         def placeholder_gen(item: BaseSelect):
             if item.options:
-                placeholder = f"{item.options[0].label[:20]} - {item.options[-1].label[:20]}"
+                placeholder = f"{item.options[0].label[:2].title()} - {item.options[-1].label[:2].title()}"
             else:
                 placeholder = ZERO_WIDTH_SPACE
             return placeholder
@@ -483,6 +483,7 @@ class SpecializationView(BaseView):
         size = int((max(len(specs) for specs in self.specs_by_level.values()) - 1) / DISCORD_SELECT_MAX) + 1
         self.specs_select = SingleSelectGroup[Specialization](
             size,
+            min_values=0,
             placeholder=placeholder_gen,
             option_label=attrgetter("name"),
             option_value=attrgetter("lower_name"),
@@ -519,14 +520,18 @@ class SpecializationView(BaseView):
         self.specs_select.selected = spec
         level_specs = self.specs_by_level[self.current_level]
         selected_spec = self.specs_select.selected_object(level_specs)
+        player_spec = self.player.specializations.get(self.current_level, None)
+        if selected_spec is None and player_spec:
+            del self.player.specializations[self.current_level]
+            self.session.add(self.player)
+        elif player_spec != selected_spec:
+            self.player.specializations[self.current_level] = selected_spec
+            self.session.add(self.player)
         return selected_spec
 
     @intercept_interaction
     async def clear_spec(self) -> None:
         self._select_spec(None)
-        if self.player.specializations.get(self.current_level, None):
-            del self.player.specializations[self.current_level]
-            self.session.add(self.player)
         self.update_view()
         await self.interact(content="clear_spec")
 
@@ -559,12 +564,8 @@ class SpecializationView(BaseView):
         await self.interact(content="last_spec")
 
     @intercept_interaction
-    async def select_spec(self) -> None:
-        selected_spec = self._select_spec(self.specs_select.value)
-        player_spec = self.player.specializations.get(self.current_level, None)
-        if player_spec != selected_spec:
-            self.player.specializations[self.current_level] = selected_spec
-            self.session.add(self.player)
+    async def select_spec(self, item: SingleSelect[Specialization]) -> None:
+        self._select_spec(item.value)
         self.update_view()
         await self.interact(content="selected spec")
 

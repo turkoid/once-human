@@ -1,3 +1,4 @@
+import functools
 from itertools import zip_longest
 from typing import Optional, Any, Callable
 
@@ -250,17 +251,23 @@ class SelectGroup[T: Base]:
         self.placeholder = placeholder
         self.min_values = min_values
         self.max_values = max_values
+        self.callback = callback
         self.items: list[BaseSelect[T]] = []
         for _ in range(size):
-            item = BaseSelect(
-                min_values=min_values,
-                max_values=min(DISCORD_SELECT_MAX, self.max_values),
+            item = self._select_class(
+                min_values=0 if min_values == 0 else 1,
+                max_values=DISCORD_SELECT_MAX,
                 option_label=option_label,
                 option_value=option_value,
                 option_description=option_description,
                 callback=callback,
             )
+            item.callback = functools.partial(callback, item)
             self.items.append(item)
+
+    @property
+    def _select_class(self) -> type[BaseSelect[T]]:
+        return BaseSelect
 
     @property
     def values(self) -> list[str]:
@@ -328,6 +335,10 @@ class SingleSelectGroup[T: Base](SelectGroup[T]):
     def __init__(self, *args, **kwargs) -> None:
         kwargs["max_values"] = 1
         super().__init__(*args, **kwargs)
+
+    @property
+    def _select_class(self) -> type[SingleSelect[T]]:
+        return SingleSelect
 
     def _normalize_selected(self, selected: Optional[SingleSelected[T]]) -> list[str]:
         if isinstance(selected, list):
