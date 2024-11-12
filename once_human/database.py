@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from once_human.config import config
 from once_human.models import Base
 
-engine = create_async_engine(config.db.url, echo=False)
+engine = create_async_engine(config.db.url, echo=True)
 AsyncSessionFactory = async_sessionmaker(
     engine,
     autoflush=False,
