@@ -47,12 +47,12 @@ class BaseView(discord.ui.View, abc.ABC):
         super().__init__(**kwargs)
         self.interaction = interaction
         self.session = session
-        self.static_embeds: list[discord.Embed] = []
-        self.timed_embeds: list[discord.Embed] = []
+        self._static_embeds: list[discord.Embed] = []
+        self._timed_embeds: list[discord.Embed] = []
 
     @property
-    def embeds(self) -> list[discord.Embed]:
-        return self.static_embeds + self.timed_embeds
+    def _embeds(self) -> list[discord.Embed]:
+        return self._static_embeds + self._timed_embeds
 
     @classmethod
     async def create(
@@ -88,12 +88,12 @@ class BaseView(discord.ui.View, abc.ABC):
     async def _send_timed_embeds(self, embeds: list[discord.Embed], duration: float) -> None:
         await asyncio.sleep(duration)
         updated_embeds = []
-        for embed in self.timed_embeds:
+        for embed in self._timed_embeds:
             if any(em for em in embeds if em is embed):
                 continue
             updated_embeds.append(embed)
-        if len(self.timed_embeds) != len(updated_embeds):
-            self.timed_embeds = updated_embeds
+        if len(self._timed_embeds) != len(updated_embeds):
+            self._timed_embeds = updated_embeds
             await self.refresh()
 
     async def interact(
@@ -108,10 +108,10 @@ class BaseView(discord.ui.View, abc.ABC):
             return
         timed_embeds: dict[float, list[discord.Embed]] = {}
         if view and view is not self:
-            self.static_embeds = []
-            self.timed_embeds = []
+            self._static_embeds = []
+            self._timed_embeds = []
         elif embeds is not None and len(embeds) == 0:
-            self.static_embeds = []
+            self._static_embeds = []
         elif embeds:
             static_embeds = []
             for embed in embeds:
@@ -120,10 +120,10 @@ class BaseView(discord.ui.View, abc.ABC):
                 else:
                     embed: TimedEmbed = embed
                     timed_embeds.setdefault(embed.duration, []).append(embed.embed)
-                    self.timed_embeds.append(embed.embed)
+                    self._timed_embeds.append(embed.embed)
             if static_embeds:
-                self.static_embeds = static_embeds
-        await response(self.interaction).edit_message(content=content, embeds=self.embeds, view=view or self)
+                self._static_embeds = static_embeds
+        await response(self.interaction).edit_message(content=content, embeds=self._embeds, view=view or self)
         tasks: list[Awaitable[None]] = [
             self._send_timed_embeds(embeds, duration) for duration, embeds in timed_embeds.items()
         ]
@@ -132,7 +132,7 @@ class BaseView(discord.ui.View, abc.ABC):
     async def refresh(self, content: Optional[str] = None) -> None:
         if self.is_finished():
             return
-        await self.interaction.edit_original_response(content=content, embeds=self.embeds, view=self)
+        await self.interaction.edit_original_response(content=content, embeds=self._embeds, view=self)
 
     async def send_error(self, description: str, duration: float = 5) -> None:
         await self.interact(embeds=[TimedEmbed(Error(description), duration)])
@@ -147,8 +147,8 @@ class BaseView(discord.ui.View, abc.ABC):
         if self.is_finished():
             return
         self.clear_items()
-        self.static_embeds = []
-        self.timed_embeds = []
+        self._static_embeds = []
+        self._timed_embeds = []
         await response(self.interaction).edit_message(
             content=content, embeds=embeds or [], view=self, delete_after=delete_after
         )
