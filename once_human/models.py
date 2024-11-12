@@ -60,8 +60,7 @@ class Player(Base):
         order_by="PlayerSpecialization.level",
     )
     specializations: AssociationProxy[dict[int, Specialization]] = association_proxy(
-        "player_specializations",
-        "specialization",
+        "player_specializations", "specialization"
     )
 
     @hybrid_property
@@ -126,9 +125,8 @@ class PlayerSpecialization(Base):
     specialization_id: Mapped[int] = mapped_column(ForeignKey("specialization.id"))
     specialization: Mapped[Specialization] = relationship()
 
-    def __init__(self, level: int, specialization: Specialization):
-        self.level = level
-        self.specialization = specialization
+    def __init__(self, level: int, specialization: Specialization) -> None:
+        super().__init__(level=level, specialization=specialization)
 
 
 class Scenario(Base):
