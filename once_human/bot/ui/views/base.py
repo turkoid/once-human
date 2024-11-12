@@ -3,7 +3,6 @@ import asyncio
 import functools
 import inspect
 from abc import abstractmethod
-from typing import Any
 from typing import Awaitable
 from typing import Callable
 from typing import Optional
@@ -44,7 +43,7 @@ def intercept_interaction(orig_func: DecoratedCallback) -> InteractionCallback:
 
 
 class BaseView(discord.ui.View, abc.ABC):
-    def __init__(self, interaction: discord.Interaction, session: AsyncSession, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, interaction: discord.Interaction, session: AsyncSession, *args, **kwargs) -> None:
         super().__init__(**kwargs)
         self.interaction = interaction
         self.session = session
@@ -57,7 +56,7 @@ class BaseView(discord.ui.View, abc.ABC):
 
     @classmethod
     async def create(
-        cls, interaction: discord.Interaction, session: AsyncSession, *args: Any, timeout: Optional[float] = None
+        cls, interaction: discord.Interaction, session: AsyncSession, *args, timeout: Optional[float] = None
     ) -> Self:
         view = cls(interaction, session, *args, timeout=timeout)
         await view.load_database_objects()

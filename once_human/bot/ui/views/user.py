@@ -24,13 +24,9 @@ from once_human.models import User
 
 class UserView(BaseView):
     def __init__(
-        self,
-        interaction: discord.Interaction,
-        session: AsyncSession,
-        discord_user: discord.User,
-        timeout: float = 100.0,
+        self, interaction: discord.Interaction, session: AsyncSession, discord_user: discord.User, **kwargs
     ) -> None:
-        super().__init__(interaction, session, timeout=timeout)
+        super().__init__(interaction, session, **kwargs)
 
         self.discord_user = discord_user
         self.user: Optional[User] = None
