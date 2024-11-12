@@ -17,6 +17,7 @@ from once_human.bot.ui.views.base import Layout
 from once_human.bot.ui.views.player_specialization import PlayerSpecializationView
 from once_human.bot.utils import InteractionCallback
 from once_human.models import Player
+from once_human.models import PlayerSpecialization
 from once_human.models import Server
 from once_human.models import User
 
@@ -47,7 +48,11 @@ class UserView(BaseView):
     async def load_database_objects(self) -> None:
         stmt = (
             select(User)
-            .options(selectinload(User.players).selectinload(Player.player_specializations))
+            .options(
+                selectinload(User.players)
+                .selectinload(Player.player_specializations)
+                .selectinload(PlayerSpecialization.specialization)
+            )
             .where(User.id == self.discord_user.id)
         )
         user = (await self.session.scalars(stmt)).first()
@@ -226,7 +231,6 @@ class UserView(BaseView):
             if player.lower_name == selected_value:
                 del user.players[i]
                 await self.session.flush()
-                self.session.expunge(player)
                 break
         self.session.add(user)
         self.player_select.refresh(user.players, selected=None)
@@ -238,7 +242,7 @@ class UserView(BaseView):
     async def player_selected(self) -> None:
         selected_player = self._select_player(self.player_select.value)
         self.update_view()
-        await self.interact(embeds=[self._create_player_embed(selected_player)])
+        await self.interact(embeds=[UserView._create_player_embed(selected_player)])
 
     @intercept_interaction
     async def server_selected(self) -> None:
