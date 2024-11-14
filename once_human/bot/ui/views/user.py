@@ -1,4 +1,3 @@
-import functools
 from operator import attrgetter
 from typing import Optional
 
@@ -15,7 +14,6 @@ from once_human.bot.ui.views.base import BaseView
 from once_human.bot.ui.views.base import intercept_interaction
 from once_human.bot.ui.views.base import Layout
 from once_human.bot.ui.views.player_specialization import PlayerSpecializationView
-from once_human.bot.utils import InteractionCallback
 from once_human.models import Player
 from once_human.models import PlayerSpecialization
 from once_human.models import Server
@@ -24,7 +22,7 @@ from once_human.models import User
 
 class UserView(BaseView):
     def __init__(
-        self, interaction: discord.Interaction, session: AsyncSession, discord_user: discord.User, **kwargs
+        self, interaction: discord.Interaction, session: AsyncSession, *, discord_user: discord.User, **kwargs
     ) -> None:
         super().__init__(interaction, session, **kwargs)
 
@@ -32,14 +30,15 @@ class UserView(BaseView):
         self.user: Optional[User] = None
         self.servers: Optional[list[Server]] = None
         self.new_player_button: Optional[BaseButton] = None
-        self.modify_player_button: Optional[BaseButton] = None
+        self.rename_player_button: Optional[BaseButton] = None
         self.reset_player_button: Optional[BaseButton] = None
         self.delete_player_button: Optional[BaseButton] = None
         self.player_select: Optional[SingleSelect[Player]] = None
         self.server_select: Optional[SingleSelect[Server]] = None
         self.modify_specs_button: Optional[BaseButton] = None
         self.save_button: Optional[BaseButton] = None
-        self.cancel_button: Optional[BaseButton] = None
+        self.save_and_close_button: Optional[BaseButton] = None
+        self.close_button: Optional[BaseButton] = None
 
     async def load_database_objects(self) -> None:
         stmt = (
@@ -66,8 +65,8 @@ class UserView(BaseView):
     def build_ui(self) -> None:
         user: User = self.user
         self.new_player_button = BaseButton(label="New", style=discord.ButtonStyle.primary, callback=self.new_player)
-        self.modify_player_button = BaseButton(
-            label="Modify", style=discord.ButtonStyle.secondary, callback=self.modify_player
+        self.rename_player_button = BaseButton(
+            label="Rename", style=discord.ButtonStyle.secondary, callback=self.rename_player
         )
         self.reset_player_button = BaseButton(
             label="Reset", style=discord.ButtonStyle.secondary, callback=self.reset_player
@@ -96,16 +95,19 @@ class UserView(BaseView):
         self.modify_specs_button = BaseButton(
             label="Specializations", style=discord.ButtonStyle.primary, callback=self.modify_specs
         )
-        self.save_button = BaseButton(label="Save", style=discord.ButtonStyle.success, callback=self.save)
-        self.cancel_button = BaseButton(label="Cancel", style=discord.ButtonStyle.danger, callback=self.cancel)
+        self.save_button = BaseButton(label="Save", style=discord.ButtonStyle.primary, callback=self.save)
+        self.save_and_close_button = BaseButton(
+            label="Save & Close", style=discord.ButtonStyle.success, callback=self.save_and_close
+        )
+        self.close_button = BaseButton(label="Close", style=discord.ButtonStyle.danger, callback=self.close)
 
         # add items to view
         layout: Layout = [
-            [self.new_player_button, self.modify_player_button, self.reset_player_button, self.delete_player_button],
+            [self.new_player_button, self.rename_player_button, self.reset_player_button, self.delete_player_button],
             [self.player_select],
             [self.server_select],
             [],
-            [self.modify_specs_button, self.save_button, self.cancel_button],
+            [self.modify_specs_button, self.save_button, self.save_and_close_button, self.close_button],
         ]
         self.add_layout(layout)
 
@@ -136,13 +138,6 @@ class UserView(BaseView):
         )
         return input
 
-    def _create_player_input_modal(
-        self, title: str, input: discord.ui.TextInput, on_submit: InteractionCallback
-    ) -> BaseModal:
-        input_modal = BaseModal(title=title, on_submit=functools.partial(on_submit, self))
-        input_modal.add_item(input)
-        return input_modal
-
     @classmethod
     def _create_player_embed(cls, player: Player) -> discord.Embed:
         specs: list[str] = []
@@ -161,63 +156,60 @@ class UserView(BaseView):
             await self.send_error("You are limited to 25 players")
             return
 
-        input = UserView._create_player_input()
+        name_input = UserView._create_player_input()
+        input_modal = BaseModal(self, title="New Player", text_inputs=[name_input])
+        await input_modal.show()
 
-        @intercept_interaction
-        async def submit() -> None:
-            value = input.value
-            for player in user.players:
-                if player.lower_name != value.lower():
-                    continue
-                await self.send_error(f"**{player.name}** already exists")
-                return
+        value = name_input.value
+        for player in user.players:
+            if player.lower_name != value.lower():
+                continue
+            await self.send_error(f"**{player.name}** already exists")
+            return
 
-            player = Player(name=value)
-            self.session.add(player)
-            user.players.append(player)
-            user.players.sort(key=attrgetter("lower_name"))
-            self.player_select.refresh(user.players, selected=player)
-            self.server_select.selected = None
-            self.update_view()
+        player = Player(name=value)
+        self.session.add(player)
+        user.players.append(player)
+        user.players.sort(key=attrgetter("lower_name"))
+        self.player_select.refresh(user.players, selected=player)
+        self.server_select.selected = None
+        self.update_view()
 
-            await self.interact(embeds=[self._create_player_embed(player)])
-
-        input_modal = self._create_player_input_modal("New Player", input, on_submit=submit)
-        await self.show_and_wait(input_modal)
+        await self.interact(embeds=[self._create_player_embed(player)])
 
     @intercept_interaction
     async def reset_player(self) -> None:
         await self.interact(content="reset player")
 
     @intercept_interaction
-    async def modify_player(self) -> None:
+    async def rename_player(self) -> None:
         user: User = self.user
         selected_player: Player = self.player_select.selected_object(user.players)
-        input = UserView._create_player_input(default=selected_player.name)
 
-        @intercept_interaction
-        async def submit():
-            if selected_player.name == input.value:
-                await self.send_error("Player name not modified")
-                return
+        name_input = UserView._create_player_input(default=selected_player.name)
+        input_modal = BaseModal(self, title="Rename Player", text_inputs=[name_input])
+        await input_modal.show()
 
-            if any(
-                player.lower_name == input.value.lower()
-                for player in user.players
-                if player.lower_name != selected_player.lower_name
-            ):
-                await self.send_error("Player name already exists")
-                return
+        value = name_input.value
+        if selected_player.name == value:
+            await self.send_error("Player name not modified")
+            return
 
-            selected_player.name = input.value
-            self.session.add(selected_player)
-            user.players.sort(key=attrgetter("lower_name"))
-            self.player_select.refresh(user.players, selected=selected_player)
-            self.update_view()
-            await self.interact(content="Player name changed")
+        if any(
+            player.lower_name == value.lower()
+            for player in user.players
+            if player.lower_name != selected_player.lower_name
+        ):
+            await self.send_error("Player name already exists")
+            return
 
-        input_modal = self._create_player_input_modal("Modify Player", input, on_submit=submit)
-        await self.show_and_wait(input_modal)
+        selected_player.name = value
+        self.session.add(selected_player)
+        user.players.sort(key=attrgetter("lower_name"))
+        self.player_select.refresh(user.players, selected=selected_player)
+        self.update_view()
+
+        await self.interact(content="Player name changed")
 
     @intercept_interaction
     async def delete_player(self) -> None:
@@ -255,14 +247,24 @@ class UserView(BaseView):
     async def modify_specs(self) -> None:
         user: User = self.user
         spec_view = await PlayerSpecializationView.create(
-            self.interaction, self.session, self.player_select.selected_object(user.players)
+            self.interaction, self.session, player=self.player_select.selected_object(user.players)
         )
         await self.interact(view=spec_view, embeds=[])
 
     @intercept_interaction
     async def save(self) -> None:
         await self.session.commit()
+        await self.refresh(content="refreshed")
+
+    @intercept_interaction
+    async def save_and_close(self) -> None:
+        await self.session.commit()
         await self.finish(content="Saved")
+
+    @intercept_interaction
+    async def close(self) -> None:
+        await self.session.rollback()
+        await self.finish(content="id")
 
     @intercept_interaction
     async def cancel(self) -> None:
@@ -274,7 +276,7 @@ class UserView(BaseView):
         self.server_select.show()
         self.server_select.disabled = self.player_select.disabled
         player_is_selected = self.player_select.has_selected
-        self.modify_player_button.disabled = not player_is_selected
+        self.rename_player_button.disabled = not player_is_selected
         self.reset_player_button.disabled = not player_is_selected
         self.delete_player_button.disabled = not player_is_selected
         server_is_selected = self.server_select.has_selected
