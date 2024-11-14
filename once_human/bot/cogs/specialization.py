@@ -18,7 +18,7 @@ class SpecializationCog(BaseCog, name="specialization"):
     async def spec(self, interaction: discord.Interaction):
         await response(interaction).defer(ephemeral=True)
         async with database.AsyncSessionFactory() as session:
-            view = await UserView.create(interaction, session, interaction.user)
+            view = await UserView.create(interaction, session, discord_user=interaction.user)
             await view.refresh()
             await view.wait()
 
