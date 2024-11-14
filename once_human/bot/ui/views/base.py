@@ -43,7 +43,7 @@ def intercept_interaction(orig_func: DecoratedCallback) -> InteractionCallback:
 
 
 class BaseView(discord.ui.View, abc.ABC):
-    def __init__(self, interaction: discord.Interaction, session: AsyncSession, *args, **kwargs) -> None:
+    def __init__(self, interaction: discord.Interaction, session: AsyncSession, **kwargs) -> None:
         super().__init__(**kwargs)
         self.interaction = interaction
         self.session = session
@@ -56,9 +56,9 @@ class BaseView(discord.ui.View, abc.ABC):
 
     @classmethod
     async def create(
-        cls, interaction: discord.Interaction, session: AsyncSession, *args, timeout: Optional[float] = None
+        cls, interaction: discord.Interaction, session: AsyncSession, *, timeout: Optional[float] = None, **kwargs
     ) -> Self:
-        view = cls(interaction, session, *args, timeout=timeout)
+        view = cls(interaction, session, timeout=timeout, **kwargs)
         await view.load_database_objects()
         view.build_ui()
         view.update_view()
@@ -81,10 +81,6 @@ class BaseView(discord.ui.View, abc.ABC):
     def update_view(self) -> None:
         pass
 
-    async def show_and_wait(self, modal: discord.ui.Modal) -> None:
-        await response(self.interaction).send_modal(modal)
-        await modal.wait()
-
     async def _send_timed_embeds(self, embeds: list[discord.Embed], duration: float) -> None:
         await asyncio.sleep(duration)
         updated_embeds = []
@@ -102,7 +98,6 @@ class BaseView(discord.ui.View, abc.ABC):
         view: Optional[discord.ui.View] = None,
         content: Optional[str] = None,
         embeds: Optional[list[discord.Embed | TimedEmbed]] = None,
-        suppress_static: bool = False,
     ) -> None:
         if self.is_finished():
             return
