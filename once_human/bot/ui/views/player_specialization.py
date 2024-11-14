@@ -26,7 +26,7 @@ LEVEL_INCREMENT = 5
 
 
 class PlayerSpecializationView(BaseView):
-    def __init__(self, interaction: discord.Interaction, session: AsyncSession, player: Player, **kwargs) -> None:
+    def __init__(self, interaction: discord.Interaction, session: AsyncSession, *, player: Player, **kwargs) -> None:
         super().__init__(interaction, session, **kwargs)
         self.player: Player = player
         self.specs: list[Specialization] = []
